@@ -1,1 +1,0 @@
-export default function Header({title,subtitle}:{title:string;subtitle?:string}){return <header className="header"><div><h1>{title}</h1>{subtitle&&<p>{subtitle}</p>}</div><div className="status"><span className="dot"/> Prototype Mode</div></header>}
