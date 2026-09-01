@@ -549,13 +549,18 @@ function AssessmentPage({
   const nav = useNavigate()
 
   const qs: any[] =
-    ((ROLE_QUESTION_BANKS as any)[profile.designation] ||
-      [])
+    ((ROLE_QUESTION_BANKS as any)[profile.designation] || [])
 
   const [answers, setAnswers] =
     useState<Record<string, number>>({})
 
   const [idx, setIdx] = useState(0)
+
+  const [submitting, setSubmitting] =
+    useState(false)
+
+  const [apiMessage, setApiMessage] =
+    useState('')
 
   const q = qs[idx]
 
@@ -569,11 +574,12 @@ function AssessmentPage({
     )
   }
 
-  const finish = () => {
+  const finish = async () => {
     const r = evaluateAssessment(qs, answers)
 
     setReport(r)
 
+    // Save assessment locally
     const hist = get(HKEY, [])
 
     save(HKEY, [
@@ -604,6 +610,7 @@ function AssessmentPage({
       ...hist,
     ])
 
+    // Update frontend competency profile
     setProfile({
       ...profile,
       currentCompetencies:
@@ -617,7 +624,69 @@ function AssessmentPage({
 
     save(AK, answers)
 
-    nav('/skill-gap')
+    // Send assessment result to FastAPI backend
+    setSubmitting(true)
+    setApiMessage('Saving assessment to backend...')
+
+    try {
+      const officialId =
+        (profile as any).id ||
+        (profile as any).official_id
+
+      if (!officialId) {
+        throw new Error(
+          'Official profile ID is missing. Please save the Official Profile first.'
+        )
+      }
+
+      const topicScores = Object.fromEntries(
+        r.topicBreakdown.map((x: any) => [
+          x.topic,
+          x.score,
+        ])
+      )
+
+      const skillGaps = r.topicBreakdown
+        .filter((x: any) => x.score < 60)
+        .map((x: any) => x.topic)
+
+      const response = await apiRequest(
+        '/assessment/submit',
+        {
+          method: 'POST',
+          body: JSON.stringify({
+            official_id: Number(officialId),
+            score: r.overallScore,
+            topic_scores: topicScores,
+            skill_gaps: skillGaps,
+          }),
+        }
+      )
+
+      console.log(
+        'Assessment saved to backend:',
+        response
+      )
+
+      setApiMessage(
+        'Assessment saved successfully.'
+      )
+    } catch (error) {
+      console.error(
+        'Assessment backend error:',
+        error
+      )
+
+      setApiMessage(
+        'Assessment saved locally. Backend sync was unavailable.'
+      )
+    } finally {
+      setSubmitting(false)
+
+      setTimeout(() => {
+        nav('/skill-gap')
+      }, 700)
+    }
   }
 
   return (
@@ -655,7 +724,9 @@ function AssessmentPage({
               {q.difficulty || 'Role calibrated'}
             </span>
 
-            <small>Adaptive competency check</small>
+            <small>
+              Adaptive competency check
+            </small>
           </div>
 
           <h2>{q.question}</h2>
@@ -678,7 +749,9 @@ function AssessmentPage({
                   }
                 >
                   <b>
-                    {String.fromCharCode(65 + i)}
+                    {String.fromCharCode(
+                      65 + i
+                    )}
                   </b>
 
                   <span>{o}</span>
@@ -687,11 +760,27 @@ function AssessmentPage({
             )}
           </div>
 
+          {apiMessage && (
+            <p
+              style={{
+                marginTop: 16,
+                fontSize: 14,
+                opacity: 0.8,
+              }}
+            >
+              {apiMessage}
+            </p>
+          )}
+
           <div className="actions">
             <Button
               kind="ghost"
-              disabled={idx === 0}
-              onClick={() => setIdx(idx - 1)}
+              disabled={
+                idx === 0 || submitting
+              }
+              onClick={() =>
+                setIdx(idx - 1)
+              }
             >
               Previous
             </Button>
@@ -700,10 +789,13 @@ function AssessmentPage({
               <Button
                 onClick={finish}
                 disabled={
-                  answers[q.id] === undefined
+                  answers[q.id] === undefined ||
+                  submitting
                 }
               >
-                Submit Assessment
+                {submitting
+                  ? 'Saving...'
+                  : 'Submit Assessment'}
               </Button>
             ) : (
               <Button
