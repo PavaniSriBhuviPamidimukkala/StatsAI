@@ -1,0 +1,1 @@
+export default function Metric({label,value,note}:{label:string;value:string|number;note:string}){return <div className="card p-5"><p className="text-sm text-slate-500">{label}</p><div className="text-3xl font-extrabold text-[#10233f] mt-2">{value}</div><p className="text-xs text-teal-700 mt-1">{note}</p></div>}
