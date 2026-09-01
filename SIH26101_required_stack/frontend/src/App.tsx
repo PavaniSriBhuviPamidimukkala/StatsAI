@@ -27,6 +27,7 @@ import {
 } from 'lucide-react'
 
 import { STATS_DATA } from './data/mockData.js'
+import { apiRequest } from './api'
 import { ROLE_QUESTION_BANKS } from './data/questions.js'
 import { COURSE_CATALOG } from './data/courses.js'
 import { evaluateAssessment } from './logic/assessmentEngine'
@@ -371,12 +372,48 @@ function ProfilePage({
   setProfile: (p: Profile) => void
 }) {
   const [p, setP] = useState({ ...profile })
+  const [saving, setSaving] = useState(false)
+  const [message, setMessage] = useState('')
 
   const roles = Object.keys(
     (STATS_DATA as any).roleRequirements
   )
 
-  const saveP = () => setProfile(p)
+  const saveP = async () => {
+    setSaving(true)
+    setMessage('')
+
+    try {
+      const response = await apiRequest('/official/profile', {
+        method: 'POST',
+        body: JSON.stringify({
+          name: p.name,
+          designation: p.designation,
+          department: p.department,
+          experience_years: p.experienceYears || 0,
+          education: p.batch || '',
+        }),
+      })
+
+      // Keep the existing frontend profile working
+      setProfile({
+        ...p,
+        ...response,
+      })
+
+      setMessage('Profile saved successfully.')
+    } catch (error) {
+      console.error(error)
+
+      // Keep local saving available if backend is temporarily unavailable
+      setProfile(p)
+      setMessage(
+        'Profile saved locally. Backend could not be reached.'
+      )
+    } finally {
+      setSaving(false)
+    }
+  }
 
   return (
     <>
@@ -415,7 +452,7 @@ function ProfilePage({
                 {l}
 
                 <input
-                  value={p[k] ?? ''}
+                  value={(p as any)[k] ?? ''}
                   onChange={(e) =>
                     setP({
                       ...p,
@@ -438,8 +475,7 @@ function ProfilePage({
                   const r = e.target.value
 
                   const req =
-                    (STATS_DATA as any)
-                      .roleRequirements[r]
+                    (STATS_DATA as any).roleRequirements[r]
 
                   setP({
                     ...p,
@@ -463,9 +499,15 @@ function ProfilePage({
 
           <div className="actions">
             <Button onClick={saveP}>
-              Save Official Profile
+              {saving ? 'Saving...' : 'Save Official Profile'}
             </Button>
           </div>
+
+          {message && (
+            <p style={{ marginTop: '12px' }}>
+              {message}
+            </p>
+          )}
         </Panel>
 
         <Panel title="Role competency benchmark">
@@ -491,7 +533,6 @@ function ProfilePage({
     </>
   )
 }
-
 /* =========================================================
    ASSESSMENT
 ========================================================= */
