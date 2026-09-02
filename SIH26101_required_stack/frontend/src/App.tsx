@@ -1407,34 +1407,114 @@ function SkillProfile({
 ========================================================= */
 
 function LearningPage({
+  profile,
   report,
 }: {
+  profile: Profile
   report: Report
 }) {
   const [done, setDone] = useState<string[]>(
     () => get('stats_ai_courses', [])
   )
 
-  const gaps =
-    report?.primarySkillGaps?.map(
-      (x: any) => x.topic
-    ) || ['Statistics']
+  const [courses, setCourses] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+  const [message, setMessage] = useState('')
 
-  const all: any[] = Object.values(
-    COURSE_CATALOG as any
-  ).flat()
+  useEffect(() => {
+    const loadRecommendations = async () => {
+      try {
+        const officialId =
+          (profile as any).id ||
+          (profile as any).official_id
 
-  const courses = all
-    .filter(
-      (c) =>
-        gaps.includes(c.subtopicMatch) ||
-        gaps.includes(c.targetCompetency)
+        if (!officialId) {
+          throw new Error(
+            'Official profile ID is missing.'
+          )
+        }
+
+        const response =
+          await apiRequest(
+            `/learning/recommendations/${officialId}`
+          )
+
+        console.log(
+          'Learning recommendations:',
+          response
+        )
+
+        // Backend returns recommended courses
+        const backendCourses =
+          response.courses ||
+          response.recommendations ||
+          []
+
+        setCourses(backendCourses)
+      } catch (error) {
+        console.error(
+          'Learning recommendation backend error:',
+          error
+        )
+
+        // Fallback to existing frontend catalogue
+        const gaps =
+          report?.primarySkillGaps?.map(
+            (x: any) => x.topic
+          ) || ['Statistics']
+
+        const all: any[] =
+          Object.values(
+            COURSE_CATALOG as any
+          ).flat()
+
+        const fallbackCourses =
+          all
+            .filter(
+              (c) =>
+                gaps.includes(
+                  c.subtopicMatch
+                ) ||
+                gaps.includes(
+                  c.targetCompetency
+                )
+            )
+            .slice(0, 6)
+
+        setCourses(
+          fallbackCourses.length
+            ? fallbackCourses
+            : all.slice(0, 6)
+        )
+
+        setMessage(
+          'Showing locally available learning recommendations.'
+        )
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    loadRecommendations()
+  }, [profile, report])
+
+  if (loading) {
+    return (
+      <>
+        <Header
+          title="Personalized Learning Path"
+          sub="Personalized recommendations mapped to iGOT Karmayogi / NSSTA learning resources."
+        />
+
+        <Panel title="Learning recommendations">
+          <p>
+            Generating your personalized
+            learning path...
+          </p>
+        </Panel>
+      </>
     )
-    .slice(0, 6)
-
-  const list = courses.length
-    ? courses
-    : all.slice(0, 6)
+  }
 
   return (
     <>
@@ -1444,68 +1524,116 @@ function LearningPage({
       />
 
       <div className="notice">
-        Learning resources are personalized based
-        on your competency gaps and role
+        Learning resources are personalized
+        based on your competency gaps and role
         requirements.
       </div>
 
-      <div className="courseGrid">
-        {list.map((c: any) => (
-          <div
-            className="panel course"
-            key={c.id}
-          >
-            <div className="courseTop">
-              <span className="tag">
-                {c.provider}
-              </span>
-
-              <span>{c.level}</span>
-            </div>
-
-            <h3>{c.title}</h3>
-
-            <p>{c.description}</p>
-
-            <div className="courseMeta">
-              <span>{c.duration}</span>
-              <span>
-                ★ {c.rating || '—'}
-              </span>
-            </div>
-
-            <Button
-              kind={
-                done.includes(c.id)
-                  ? 'ghost'
-                  : 'primary'
-              }
-              onClick={() => {
-                if (!done.includes(c.id)) {
-                  const updated = [
-                    ...done,
-                    c.id,
-                  ]
-
-                  setDone(updated)
-                  save(
-                    'stats_ai_courses',
-                    updated
-                  )
-                }
-              }}
+      {courses.length === 0 ? (
+        <Panel title="No recommendations available">
+          <p>
+            Complete an assessment to generate
+            personalized learning recommendations.
+          </p>
+        </Panel>
+      ) : (
+        <div className="courseGrid">
+          {courses.map((c: any) => (
+            <div
+              className="panel course"
+              key={c.id || c.title}
             >
-              {done.includes(c.id)
-                ? 'Marked as Learning'
-                : 'Start Learning'}
-            </Button>
-          </div>
-        ))}
-      </div>
+              <div className="courseTop">
+                <span className="tag">
+                  {c.provider ||
+                    c.source ||
+                    'iGOT / NSSTA'}
+                </span>
+
+                <span>
+                  {c.level ||
+                    'Recommended'}
+                </span>
+              </div>
+
+              <h3>
+                {c.title ||
+                  c.name ||
+                  'Recommended Learning Resource'}
+              </h3>
+
+              <p>
+                {c.description ||
+                  'Learning resource recommended based on your identified competency gaps.'}
+              </p>
+
+              <div className="courseMeta">
+                <span>
+                  {c.duration ||
+                    'Self-paced'}
+                </span>
+
+                <span>
+                  ★ {c.rating || '—'}
+                </span>
+              </div>
+
+              <Button
+                kind={
+                  done.includes(
+                    String(c.id)
+                  )
+                    ? 'ghost'
+                    : 'primary'
+                }
+                onClick={() => {
+                  const courseId =
+                    String(c.id)
+
+                  if (
+                    !done.includes(
+                      courseId
+                    )
+                  ) {
+                    const updated = [
+                      ...done,
+                      courseId,
+                    ]
+
+                    setDone(updated)
+
+                    save(
+                      'stats_ai_courses',
+                      updated
+                    )
+                  }
+                }}
+              >
+                {done.includes(
+                  String(c.id)
+                )
+                  ? 'Marked as Learning'
+                  : 'Start Learning'}
+              </Button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {message && (
+        <p
+          style={{
+            marginTop: '14px',
+            fontSize: '14px',
+            opacity: 0.75,
+          }}
+        >
+          {message}
+        </p>
+      )}
     </>
   )
 }
-
 /* =========================================================
    AI QUIZ
 ========================================================= */
