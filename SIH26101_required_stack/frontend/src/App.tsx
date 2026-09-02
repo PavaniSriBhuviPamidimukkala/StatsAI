@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect,useMemo, useState } from 'react'
 import {
   BrowserRouter,
   Navigate,
@@ -884,7 +884,95 @@ function SkillGapPage({
 }) {
   const nav = useNavigate()
 
-  if (!report) {
+  const [backendGaps, setBackendGaps] =
+    useState<string[]>([])
+
+  const [backendScores, setBackendScores] =
+    useState<Record<string, number>>({})
+
+  const [loading, setLoading] =
+    useState(true)
+
+  const [message, setMessage] =
+    useState('')
+
+  useEffect(() => {
+    const loadSkillGaps = async () => {
+      try {
+        const officialId =
+          (profile as any).id ||
+          (profile as any).official_id
+
+        if (!officialId) {
+          throw new Error(
+            'Official profile ID is missing.'
+          )
+        }
+
+        // Get latest skill profile
+        const skillProfile =
+          await apiRequest(
+            `/skills/profile/${officialId}`
+          )
+
+        // Get detected skill gaps
+        const gaps =
+          await apiRequest(
+            `/skills/gaps/${officialId}`
+          )
+
+        console.log(
+          'Skill profile:',
+          skillProfile
+        )
+
+        console.log(
+          'Skill gaps:',
+          gaps
+        )
+
+        setBackendScores(
+          skillProfile.topic_scores || {}
+        )
+
+        setBackendGaps(
+          gaps.skill_gaps || []
+        )
+      } catch (error) {
+        console.error(
+          'Skill gap backend error:',
+          error
+        )
+
+        setMessage(
+          'Showing locally calculated skill gaps.'
+        )
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    loadSkillGaps()
+  }, [profile])
+
+  if (!report && backendGaps.length === 0) {
+    if (loading) {
+      return (
+        <>
+          <Header
+            title="Skill Gap"
+            sub="Your competency gaps appear after completing the assessment."
+          />
+
+          <Panel title="Skill-Gap Analysis">
+            <p>
+              Loading your competency gaps...
+            </p>
+          </Panel>
+        </>
+      )
+    }
+
     return (
       <>
         <Header
@@ -898,13 +986,15 @@ function SkillGapPage({
           <h2>Assessment required</h2>
 
           <p>
-            Take the role-based assessment to generate
-            your current skill profile and personalized
-            gaps.
+            Take the role-based assessment to
+            generate your current skill profile
+            and personalized gaps.
           </p>
 
           <Button
-            onClick={() => nav('/assessment')}
+            onClick={() =>
+              nav('/assessment')
+            }
           >
             Start Assessment
           </Button>
@@ -918,6 +1008,67 @@ function SkillGapPage({
       profile.designation
     ] || {}
 
+  /*
+   * Use backend scores when available.
+   * Otherwise use the existing assessment report.
+   */
+  const getCurrentScore = (
+    topic: string
+  ) => {
+    if (
+      backendScores &&
+      backendScores[topic] !== undefined
+    ) {
+      return Number(
+        backendScores[topic]
+      )
+    }
+
+    return (
+      report?.topicBreakdown?.find(
+        (x: any) =>
+          x.topic === topic
+      )?.score ??
+      profile.currentCompetencies?.[
+        topic
+      ] ??
+      0
+    )
+  }
+
+  /*
+   * Determine primary gaps.
+   */
+  const calculatedGaps = Object.entries(
+    req
+  )
+    .map(([topic, target]: any) => {
+      const current =
+        getCurrentScore(topic)
+
+      return {
+        topic,
+        target: Number(target),
+        current,
+        gap: Math.max(
+          0,
+          Number(target) - current
+        ),
+      }
+    })
+    .filter(
+      (x) => x.gap > 0
+    )
+    .sort(
+      (a, b) =>
+        b.gap - a.gap
+    )
+
+  const primaryGaps =
+    calculatedGaps.length
+      ? calculatedGaps
+      : []
+
   return (
     <>
       <Header
@@ -930,18 +1081,12 @@ function SkillGapPage({
           {Object.entries(req).map(
             ([topic, target]: any) => {
               const current =
-                report.topicBreakdown.find(
-                  (x: any) =>
-                    x.topic === topic
-                )?.score ??
-                profile.currentCompetencies?.[
-                  topic
-                ] ??
-                0
+                getCurrentScore(topic)
 
               const gap = Math.max(
                 0,
-                target - current
+                Number(target) -
+                  current
               )
 
               return (
@@ -950,7 +1095,10 @@ function SkillGapPage({
                   key={topic}
                 >
                   <div>
-                    <strong>{topic}</strong>
+                    <strong>
+                      {topic}
+                    </strong>
+
                     <span>
                       Target {target}%
                     </span>
@@ -958,14 +1106,25 @@ function SkillGapPage({
 
                   <div>
                     <div className="barLabels">
-                      <span>Current</span>
-                      <b>{current}%</b>
+                      <span>
+                        Current
+                      </span>
+
+                      <b>
+                        {current}%
+                      </b>
                     </div>
 
                     <div className="miniBar">
                       <i
                         style={{
-                          width: `${current}%`,
+                          width: `${Math.min(
+                            100,
+                            Math.max(
+                              0,
+                              current
+                            )
+                          )}%`,
                         }}
                       />
                     </div>
@@ -1001,34 +1160,75 @@ function SkillGapPage({
 
       <div className="grid2">
         <Panel title="Primary skill gap">
-          <h2 className="bigGap">
-            {report.primarySkillGaps
-              .map((x: any) => x.topic)
-              .join(' / ')}
-          </h2>
+          {primaryGaps.length > 0 ? (
+            <>
+              <h2 className="bigGap">
+                {primaryGaps
+                  .slice(0, 2)
+                  .map(
+                    (x) =>
+                      x.topic
+                  )
+                  .join(' / ')}
+              </h2>
 
-          <p>
-            {report.primarySkillGap?.description}
-          </p>
+              <p>
+                These competencies have the
+                largest difference between
+                your current proficiency and
+                the expected benchmark for
+                your role.
+              </p>
+            </>
+          ) : (
+            <p>
+              No significant skill gap detected.
+              Your current competencies meet the
+              defined role benchmarks.
+            </p>
+          )}
         </Panel>
 
-        <Panel title="Subtopic weaknesses">
-          <ul className="weakList">
-            {report.subtopicWeaknesses.length ? (
-              report.subtopicWeaknesses.map(
-                (x: string) => (
-                  <li key={x}>{x}</li>
+        <Panel title="Detected skill gaps">
+          {backendGaps.length > 0 ? (
+            <ul className="weakList">
+              {backendGaps.map(
+                (gap) => (
+                  <li key={gap}>
+                    {gap}
+                  </li>
                 )
-              )
-            ) : (
-              <li>
-                No specific subtopic weakness
-                detected.
-              </li>
-            )}
-          </ul>
+              )}
+            </ul>
+          ) : primaryGaps.length > 0 ? (
+            <ul className="weakList">
+              {primaryGaps.map(
+                (gap) => (
+                  <li key={gap.topic}>
+                    {gap.topic}
+                  </li>
+                )
+              )}
+            </ul>
+          ) : (
+            <p>
+              No skill gaps detected.
+            </p>
+          )}
         </Panel>
       </div>
+
+      {message && (
+        <p
+          style={{
+            marginTop: '12px',
+            fontSize: '14px',
+            opacity: 0.75,
+          }}
+        >
+          {message}
+        </p>
+      )}
     </>
   )
 }
