@@ -381,32 +381,52 @@ function ProfilePage({
 
   const saveP = async () => {
     setSaving(true)
-    setMessage('')
+    setMessage('Saving profile...')
 
     try {
-      const response = await apiRequest('/official/profile', {
-        method: 'POST',
-        body: JSON.stringify({
-          name: p.name,
-          designation: p.designation,
-          department: p.department,
-          experience_years: p.experienceYears || 0,
-          education: p.batch || '',
-        }),
-      })
+      const response = await apiRequest(
+        '/official/profile',
+        {
+          method: 'POST',
+          body: JSON.stringify({
+            name: p.name,
+            designation: p.designation,
+            department: p.department,
+            experience_years:
+              p.experienceYears || 0,
+            education: p.batch || '',
+          }),
+        }
+      )
 
-      // Keep the existing frontend profile working
-      setProfile({
+      // Store the backend-generated official ID
+      const updatedProfile = {
         ...p,
         ...response,
-      })
+        id: response.id,
+      }
 
-      setMessage('Profile saved successfully.')
+      // Update both local and application-wide profile
+      setP(updatedProfile)
+      setProfile(updatedProfile)
+
+      setMessage(
+        'Profile saved successfully.'
+      )
+
+      console.log(
+        'Official profile saved:',
+        updatedProfile
+      )
     } catch (error) {
-      console.error(error)
+      console.error(
+        'Profile backend error:',
+        error
+      )
 
-      // Keep local saving available if backend is temporarily unavailable
+      // Keep local saving available
       setProfile(p)
+
       setMessage(
         'Profile saved locally. Backend could not be reached.'
       )
@@ -428,7 +448,9 @@ function ProfilePage({
             <div className="avatar">
               {(p.name || 'O')
                 .split(' ')
-                .map((x: string) => x[0])
+                .map(
+                  (x: string) => x[0]
+                )
                 .join('')
                 .slice(0, 2)}
             </div>
@@ -444,7 +466,10 @@ function ProfilePage({
               ['name', 'Name'],
               ['email', 'Official Email'],
               ['department', 'Department'],
-              ['experienceYears', 'Experience (years)'],
+              [
+                'experienceYears',
+                'Experience (years)',
+              ],
               ['batch', 'Batch'],
               ['zone', 'Location'],
             ].map(([k, l]) => (
@@ -452,13 +477,18 @@ function ProfilePage({
                 {l}
 
                 <input
-                  value={(p as any)[k] ?? ''}
+                  value={
+                    (p as any)[k] ?? ''
+                  }
                   onChange={(e) =>
                     setP({
                       ...p,
                       [k]:
-                        k === 'experienceYears'
-                          ? Number(e.target.value)
+                        k ===
+                        'experienceYears'
+                          ? Number(
+                              e.target.value
+                            )
                           : e.target.value,
                     })
                   }
@@ -472,39 +502,59 @@ function ProfilePage({
               <select
                 value={p.designation}
                 onChange={(e) => {
-                  const r = e.target.value
+                  const r =
+                    e.target.value
 
                   const req =
-                    (STATS_DATA as any).roleRequirements[r]
+                    (STATS_DATA as any)
+                      .roleRequirements[r]
 
                   setP({
                     ...p,
                     designation: r,
                     currentCompetencies:
                       Object.fromEntries(
-                        Object.keys(req).map((k) => [
-                          k,
-                          0,
-                        ])
+                        Object.keys(
+                          req
+                        ).map(
+                          (k) => [
+                            k,
+                            0,
+                          ]
+                        )
                       ),
                   })
                 }}
               >
                 {roles.map((r) => (
-                  <option key={r}>{r}</option>
+                  <option
+                    key={r}
+                    value={r}
+                  >
+                    {r}
+                  </option>
                 ))}
               </select>
             </label>
           </div>
 
           <div className="actions">
-            <Button onClick={saveP}>
-              {saving ? 'Saving...' : 'Save Official Profile'}
+            <Button
+              onClick={saveP}
+              disabled={saving}
+            >
+              {saving
+                ? 'Saving...'
+                : 'Save Official Profile'}
             </Button>
           </div>
 
           {message && (
-            <p style={{ marginTop: '12px' }}>
+            <p
+              style={{
+                marginTop: '12px',
+              }}
+            >
               {message}
             </p>
           )}
@@ -512,17 +562,22 @@ function ProfilePage({
 
         <Panel title="Role competency benchmark">
           <p>
-            These benchmarks define the expected proficiency
-            for the selected role.
+            These benchmarks define the
+            expected proficiency for the
+            selected role.
           </p>
 
           <div className="benchmarkGrid">
             {Object.entries(
-              (STATS_DATA as any).roleRequirements[
+              (STATS_DATA as any)
+                .roleRequirements[
                 p.designation
               ] || {}
             ).map(([k, v]) => (
-              <div className="benchmark" key={k}>
+              <div
+                className="benchmark"
+                key={k}
+              >
                 <span>{k}</span>
                 <b>{String(v)}%</b>
               </div>
