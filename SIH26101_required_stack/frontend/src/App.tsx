@@ -1649,6 +1649,9 @@ function AIQuiz({
   const [score, setScore] =
     useState<number | null>(null)
 
+  const [ans, setAns] =
+    useState<number[]>([])
+
   const questions = useMemo(() => {
     const weak =
       report?.subtopicWeaknesses?.[0]
@@ -1656,7 +1659,8 @@ function AIQuiz({
     return [
       {
         q: `Which action best supports improvement in ${
-          weak || 'the identified skill gap'
+          weak ||
+          'the identified skill gap'
         }?`,
         opts: [
           'Targeted practice and reassessment',
@@ -1691,8 +1695,82 @@ function AIQuiz({
     ]
   }, [report])
 
-  const [ans, setAns] =
-    useState<number[]>([])
+  const submitQuiz = () => {
+    const correct =
+      ans.filter(
+        (answer, index) =>
+          answer === questions[index].a
+      ).length
+
+    const finalScore = Math.round(
+      (correct /
+        questions.length) *
+        100
+    )
+
+    setScore(finalScore)
+
+    // Save quiz performance locally
+    const previous =
+      get('stats_ai_quiz_history', [])
+
+    const quizResult = {
+      id:
+        'QUIZ-' +
+        Date.now(),
+
+      date:
+        new Date().toLocaleString(
+          'en-IN'
+        ),
+
+      score: finalScore,
+
+      totalQuestions:
+        questions.length,
+
+      correctAnswers:
+        correct,
+
+      targetSkill:
+        report?.primarySkillGap
+          ?.topic ||
+        'Role competencies',
+
+      subtopic:
+        report
+          ?.subtopicWeaknesses?.[0] ||
+        '',
+
+      status:
+        finalScore >= 80
+          ? 'STRONG'
+          : finalScore >= 60
+          ? 'GOOD'
+          : finalScore >= 40
+          ? 'NEEDS IMPROVEMENT'
+          : 'CRITICAL SKILL GAP',
+    }
+
+    save(
+      'stats_ai_quiz_history',
+      [
+        quizResult,
+        ...previous,
+      ]
+    )
+
+    console.log(
+      'Quiz performance:',
+      quizResult
+    )
+  }
+
+  const resetQuiz = () => {
+    setStarted(false)
+    setScore(null)
+    setAns([])
+  }
 
   return (
     <>
@@ -1707,20 +1785,23 @@ function AIQuiz({
 
           <p>
             Document extraction → topic
-            identification → competency mapping
-            → question generation → validation →
-            adaptive assessment.
+            identification → competency
+            mapping → question generation →
+            validation → adaptive assessment.
           </p>
         </Panel>
 
         <Panel title="Adaptive quiz">
-          {!started && score === null ? (
+          {!started &&
+          score === null ? (
             <>
               <p>
-                Generate a short quiz targeted to
-                your current gap:{' '}
+                Generate a short quiz targeted
+                to your current gap:{' '}
                 <b>
-                  {report?.primarySkillGap?.topic ||
+                  {report
+                    ?.primarySkillGap
+                    ?.topic ||
                     'role competencies'}
                 </b>
                 .
@@ -1743,67 +1824,80 @@ function AIQuiz({
               <p>
                 {score >= 80
                   ? 'Strong understanding. The next learning recommendation can move to the next competency.'
+                  : score >= 60
+                  ? 'Good progress. Continue learning and strengthen the remaining weak areas.'
                   : 'Keep learning and reassess the weak subtopics for targeted improvement.'}
               </p>
 
-              <Button
-                onClick={() => {
-                  setStarted(false)
-                  setScore(null)
-                  setAns([])
+              <p
+                style={{
+                  marginTop: '12px',
+                  fontSize: '14px',
+                  opacity: 0.75,
                 }}
+              >
+                Quiz performance has been
+                recorded.
+              </p>
+
+              <Button
+                onClick={resetQuiz}
               >
                 Retake Quiz
               </Button>
             </>
           ) : (
             <div className="quizList">
-              {questions.map((x, i) => (
-                <div
-                  className="quizQ"
-                  key={i}
-                >
-                  <b>
-                    {i + 1}. {x.q}
-                  </b>
+              {questions.map(
+                (x, i) => (
+                  <div
+                    className="quizQ"
+                    key={i}
+                  >
+                    <b>
+                      {i + 1}. {x.q}
+                    </b>
 
-                  {x.opts.map((o, j) => (
-                    <button
-                      className={
-                        ans[i] === j
-                          ? 'selected'
-                          : ''
-                      }
-                      onClick={() => {
-                        const a = [...ans]
-                        a[i] = j
-                        setAns(a)
-                      }}
-                      key={o}
-                    >
-                      {o}
-                    </button>
-                  ))}
-                </div>
-              ))}
+                    {x.opts.map(
+                      (o, j) => (
+                        <button
+                          className={
+                            ans[i] === j
+                              ? 'selected'
+                              : ''
+                          }
+                          onClick={() => {
+                            const updated =
+                              [...ans]
+
+                            updated[i] =
+                              j
+
+                            setAns(
+                              updated
+                            )
+                          }}
+                          key={o}
+                        >
+                          {o}
+                        </button>
+                      )
+                    )}
+                  </div>
+                )
+              )}
 
               <Button
                 disabled={
                   ans.length !==
-                  questions.length
-                }
-                onClick={() =>
-                  setScore(
-                    Math.round(
-                      (ans.filter(
-                        (a, i) =>
-                          a ===
-                          questions[i].a
-                      ).length /
-                        questions.length) *
-                        100
-                    )
+                  questions.length ||
+                  ans.some(
+                    (x) =>
+                      x === undefined
                   )
+                }
+                onClick={
+                  submitQuiz
                 }
               >
                 Submit Quiz
@@ -1815,7 +1909,6 @@ function AIQuiz({
     </>
   )
 }
-
 /* =========================================================
    PERFORMANCE
 ========================================================= */
