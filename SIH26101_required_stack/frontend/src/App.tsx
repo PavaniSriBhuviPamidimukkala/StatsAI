@@ -1044,15 +1044,99 @@ function SkillProfile({
   profile: Profile
   report: Report
 }) {
-  const rows =
-    report?.topicBreakdown ||
-    Object.entries(
-      profile.currentCompetencies || {}
-    ).map(([topic, score]) => ({
-      topic,
-      score: Number(score),
-      category: 'BASELINE',
-    }))
+  const [rows, setRows] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+  const [message, setMessage] = useState('')
+
+  useEffect(() => {
+    const loadSkillProfile = async () => {
+      try {
+        const officialId =
+          (profile as any).id ||
+          (profile as any).official_id
+
+        if (!officialId) {
+          throw new Error(
+            'Official profile ID is missing.'
+          )
+        }
+
+        const response = await apiRequest(
+          `/skills/profile/${officialId}`
+        )
+
+        console.log(
+          'Skill profile from backend:',
+          response
+        )
+
+        const backendRows =
+          Object.entries(
+            response.topic_scores || {}
+          ).map(
+            ([topic, score]) => ({
+              topic,
+              score: Number(score),
+              category:
+                Number(score) >= 80
+                  ? 'STRONG'
+                  : Number(score) >= 60
+                  ? 'GOOD'
+                  : Number(score) >= 40
+                  ? 'NEEDS IMPROVEMENT'
+                  : 'CRITICAL SKILL GAP',
+            })
+          )
+
+        setRows(backendRows)
+      } catch (error) {
+        console.error(
+          'Skill profile backend error:',
+          error
+        )
+
+        // Fallback to existing frontend data
+        const fallbackRows =
+          report?.topicBreakdown ||
+          Object.entries(
+            profile.currentCompetencies || {}
+          ).map(
+            ([topic, score]) => ({
+              topic,
+              score: Number(score),
+              category: 'BASELINE',
+            })
+          )
+
+        setRows(fallbackRows)
+
+        setMessage(
+          'Showing locally saved competency data.'
+        )
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    loadSkillProfile()
+  }, [profile, report])
+
+  if (loading) {
+    return (
+      <>
+        <Header
+          title="Skill Profile"
+          sub="Your latest competency state across role-relevant domains."
+        />
+
+        <Panel title="Current competency profile">
+          <p>
+            Loading competency profile...
+          </p>
+        </Panel>
+      </>
+    )
+  }
 
   return (
     <>
@@ -1062,31 +1146,57 @@ function SkillProfile({
       />
 
       <Panel title="Current competency profile">
-        <div className="bars">
-          {rows.map((x: any) => (
-            <div
-              className="barRow"
-              key={x.topic}
-            >
-              <div>
-                <span>{x.topic}</span>
-                <b>{x.score}%</b>
-              </div>
+        {rows.length === 0 ? (
+          <p>
+            No competency assessment data
+            available yet. Please complete an
+            assessment first.
+          </p>
+        ) : (
+          <div className="bars">
+            {rows.map((x: any) => (
+              <div
+                className="barRow"
+                key={x.topic}
+              >
+                <div>
+                  <span>{x.topic}</span>
+                  <b>{x.score}%</b>
+                </div>
 
-              <div className="track">
-                <i
-                  style={{
-                    width: `${x.score}%`,
-                  }}
-                />
-              </div>
+                <div className="track">
+                  <i
+                    style={{
+                      width: `${Math.min(
+                        100,
+                        Math.max(
+                          0,
+                          x.score
+                        )
+                      )}%`,
+                    }}
+                  />
+                </div>
 
-              <small>
-                {x.category || ''}
-              </small>
-            </div>
-          ))}
-        </div>
+                <small>
+                  {x.category || ''}
+                </small>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {message && (
+          <p
+            style={{
+              marginTop: '14px',
+              fontSize: '14px',
+              opacity: 0.75,
+            }}
+          >
+            {message}
+          </p>
+        )}
       </Panel>
     </>
   )
